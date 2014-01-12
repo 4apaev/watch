@@ -1,0 +1,16 @@
+{
+  "name": "watch",
+  "description": "watch directories for changes",
+  "version": "0.0.1",
+  "engines": {
+    "node": ">=0.1"
+  },
+  "repository": {
+    "type": "git"
+  },
+  "dependencies": {
+    "colors": "latest",
+    "jade": ">=1.0.0",
+    "stylus": "latest"
+  }
+}

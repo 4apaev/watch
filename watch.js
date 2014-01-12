@@ -1,36 +1,41 @@
-var fs = require('fs');
+#!/usr/bin/env node
+var
+   fs     = require('fs')
+  ,path   = require('path')
+  ,exec   = require('child_process').exec
+  ,colors = require('colors');
 
-var _ = require('lodash');
-var exec = require('child_process').exec;
 
 (function(dirs) {
+
   var watcher = {
-    cmd: {
-      'jade': 'jade src/views/index.jade -o src/pub',
-      'styl': 'stylus -c src/styles/main.styl -o src/pub/css/'
-    },
-    formatDate: function() {
-      var d = new Date();
-      return d.getHours() + ':' + d.getMinutes() + ':' + d .getSeconds();
+
+    jade: function (fl) {
+      return 'jade -P ' + fl + ' -o .';
     },
 
-    getType: function(filename) {
-      return filename.split('.').pop();
+    styl: function(fl) {
+      return 'stylus -c styles/main.styl -o css/';
     },
 
-    doCompile: function(event, filename) {
-      var type = this.getType(filename);
-      if(!this.cmd[type]) return;
-      exec(this.cmd[type]);
-      var msg = this.formatDate() + ' => ' + filename;
-      console.log( /jade/.test(type) ? msg.magenta : msg.green);
+    cpDone: function (err, stdout, stderr) {
+      if (err) throw err;
+      console.log(new Date().toTimeString().split(' ').shift().green, stdout);
+    },
+
+    doCompile: function(evnt, file, dir) {
+      var ext = path.extname(file).slice(1);
+      if(typeof this[ext] === "function") {
+        exec(this[ext](path.join(dir, file)), this.cpDone);
+      }
     },
 
     doWatch: function(dirs) {
-      _.each(dirs, function(dir) {
-        fs.watch(dir, this.doCompile.bind(this))
-      }, this);
+      var fn = this.doCompile.bind(this);
+      dirs.forEach(function(dir) {
+        fs.watch(dir, function(evnt, file) { fn(evnt, file,dir) })
+      });
     }
-  };
-  watcher.doWatch(dirs);
+  }["doWatch"](dirs);
+
 }(process.argv.slice(2)));
