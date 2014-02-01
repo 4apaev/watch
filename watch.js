@@ -1,41 +1,90 @@
 #!/usr/bin/env node
+
+/**
+ * @param {Object} [...., ["paths"], ["files"], "dist", /reGex/]
+ * @param {Function} callback[currentChange, allFiles, onFinish[error, data]]
+ *
+*/
+
 var
-   fs     = require('fs')
-  ,path   = require('path')
-  ,exec   = require('child_process').exec
-  ,colors = require('colors');
+    fs = require('fs'),
+    path = require('path'),
+    colors = require('colors');
 
+var watcher = module.exports = function(opt, react) {
 
-(function(dirs) {
+    var OPTIONS = {
+        paths  : opt.paths || [],
+        files  : opt.files || [],
+        dist   : opt.dist  || "compailed.html",
+        rgx    : opt.rgx   || /\.jade$/,
+        fail   : opt.fail  || false,
+        msgOk         : opt.msgOk         || "saved",
+        msgErrCompile : opt.msgErrCompile || "resived error from file:",
+        msgErrSave    : opt.msgErrSave    || "cannot save file"
+    };
 
-  var watcher = {
+    var
+        log = console.log.bind(console),
 
-    jade: function (fl) {
-      return 'jade -P ' + fl + ' -o .';
-    },
+        onFinish = function(fileName) {
+            return function(err) {
+                if(err) throw err;
+                log(new Date().toTimeString().split(' ').shift()['grey'], OPTIONS.msgOk['green'], fileName);
+            }
+        },
 
-    styl: function(fl) {
-      return 'stylus -c styles/main.styl -o css/';
-    },
+        isExt = function(file) {
+            return OPTIONS.rgx.test(file)
+        },
 
-    cpDone: function (err, stdout, stderr) {
-      if (err) throw err;
-      console.log(new Date().toTimeString().split(' ').shift().green, stdout);
-    },
+        remap = function(dir) {
+            return function(file) {
+                return path.join(dir, file);
+            }
+        },
 
-    doCompile: function(evnt, file, dir) {
-      var ext = path.extname(file).slice(1);
-      if(typeof this[ext] === "function") {
-        exec(this[ext](path.join(dir, file)), this.cpDone);
-      }
-    },
+        onFiles = function(dir, fn) {
+            return function(err, files) {
+                if (err) throw err;
+                OPTIONS.files = OPTIONS.files.concat(files.filter(isExt).map(remap(dir)));
+                if (fn) fn(OPTIONS.files);
+            }
+        },
 
-    doWatch: function(dirs) {
-      var fn = this.doCompile.bind(this);
-      dirs.forEach(function(dir) {
-        fs.watch(dir, function(evnt, file) { fn(evnt, file,dir) })
-      });
+        onDir = function(n, fn) {
+            return function(dir) {
+                n--;
+                return fs.readdir(dir, onFiles(dir, !n ? fn : null));
+            }
+        },
+
+        onChange = function(file) {
+            var fileName = file;
+
+            return function (curr, prev) {
+
+                react(fileName, OPTIONS.files, function (err, res) {
+                    if (err) {
+                        log(OPTIONS.msgErrCompile['red'], fileName['magenta']);
+                        if(!!OPTIONS.fail) throw err;
+                        log(err.toString()['grey']);
+                        return;
+                    }
+                    fs.writeFile(OPTIONS.dist, res, onFinish(fileName))
+                });
+            }
+        },
+
+        init = function(files) {
+            files.forEach(function(file) {
+                fs.watchFile(file, onChange(file));
+            });
+        };
+
+    if(OPTIONS.paths.length === 0 ) {
+        init(OPTIONS.files);
+    } else {
+        OPTIONS.paths.forEach(onDir(OPTIONS.paths.length, init));
     }
-  }["doWatch"](dirs);
-
-}(process.argv.slice(2)));
+};
