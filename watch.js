@@ -1,90 +1,47 @@
-#!/usr/bin/env node
-
-/**
- * @param {Object} [...., ["paths"], ["files"], "dist", /reGex/]
- * @param {Function} callback[currentChange, allFiles, onFinish[error, data]]
- *
-*/
-
 var
-    fs = require('fs'),
-    path = require('path'),
-    colors = require('colors');
+    fs     = require('fs'),
+    path   = require('path'),
+    colors = require('colors'),
+    watch  = module.exports = function($) {
 
-var watcher = module.exports = function(opt, react) {
+        $.files = $.files || [];
+        $.rgx   = $.rgx || /\.jade$/;
 
-    var OPTIONS = {
-        paths  : opt.paths || [],
-        files  : opt.files || [],
-        dist   : opt.dist  || "compailed.html",
-        rgx    : opt.rgx   || /\.jade$/,
-        fail   : opt.fail  || false,
-        msgOk         : opt.msgOk         || "saved",
-        msgErrCompile : opt.msgErrCompile || "resived error from file:",
-        msgErrSave    : opt.msgErrSave    || "cannot save file"
-    };
+        var
+            byRgx = $.rgx.test.bind($.rgx),
 
-    var
-        log = console.log.bind(console),
+            onSave = function(file) {
+                return function(err) {
+                    if (err) throw err;
+                    console.log('saved'.green, file);
+                }
+            },
 
-        onFinish = function(fileName) {
-            return function(err) {
-                if(err) throw err;
-                log(new Date().toTimeString().split(' ').shift()['grey'], OPTIONS.msgOk['green'], fileName);
-            }
-        },
+            onChange = function(file, files, output, callback, fail) {
+                return function() {
+                    callback(file, files, function(err, data) {
+                        if(err && fail) throw err;
+                        err ? console.error(colors.red(err.message).inverse, colors.red(file).bold) : fs.writeFile(output, data, onSave(file));
+                    });
+                }
+            },
 
-        isExt = function(file) {
-            return OPTIONS.rgx.test(file)
-        },
+            resolve = function(dir) {
+               return fs.readdirSync(dir)
+                        .filter(byRgx)
+                        .map(function(f) {
+                            return path.join(dir, f);
+                        });
+            };
 
-        remap = function(dir) {
-            return function(file) {
-                return path.join(dir, file);
-            }
-        },
-
-        onFiles = function(dir, fn) {
-            return function(err, files) {
-                if (err) throw err;
-                OPTIONS.files = OPTIONS.files.concat(files.filter(isExt).map(remap(dir)));
-                if (fn) fn(OPTIONS.files);
-            }
-        },
-
-        onDir = function(n, fn) {
-            return function(dir) {
-                n--;
-                return fs.readdir(dir, onFiles(dir, !n ? fn : null));
-            }
-        },
-
-        onChange = function(file) {
-            var fileName = file;
-
-            return function (curr, prev) {
-
-                react(fileName, OPTIONS.files, function (err, res) {
-                    if (err) {
-                        log(OPTIONS.msgErrCompile['red'], fileName['magenta']);
-                        if(!!OPTIONS.fail) throw err;
-                        log(err.toString()['grey']);
-                        return;
-                    }
-                    fs.writeFile(OPTIONS.dist, res, onFinish(fileName))
-                });
-            }
-        },
-
-        init = function(files) {
-            files.forEach(function(file) {
-                fs.watchFile(file, onChange(file));
+        if ($.dirs) {
+            $.dirs.forEach(function(dir) {
+                $.files = $.files.concat(resolve(dir))
             });
-        };
+        }
 
-    if(OPTIONS.paths.length === 0 ) {
-        init(OPTIONS.files);
-    } else {
-        OPTIONS.paths.forEach(onDir(OPTIONS.paths.length, init));
-    }
-};
+        $.files.forEach(function(fl) {
+            var fn = onChange(fl, $.files, $.dist, $.react, $.fail); fn();
+            fs.watchFile(fl, fn);
+        });
+    };
